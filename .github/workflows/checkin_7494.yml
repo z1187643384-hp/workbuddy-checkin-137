@@ -1,13 +1,17 @@
 name: WorkBuddy_7494 每日自动签到
 
 # ─────────────────────────────────────────────────────────────
-#  WorkBuddy「Buddy 加油站」每日签到 · GitHub Actions 版
-#  原理：从仓库 Secrets 读取凭据，直接调用官方签到接口
-#       （接口直签，无需 GUI，无需本机常驻）
-#  凭据（长效令牌优先，适配客户端 5.6.2+）：
-#    WB_REFRESH_TOKEN — 长效令牌，每次运行先向插件网关换取接口令牌（推荐）
-#    WB_ACCESS_TOKEN  — 短效接口令牌直通（兼容 5.5.x 及更早 / 未加密登录态）
-#  两者都配时脚本会优先使用 WB_REFRESH_TOKEN。
+#  WorkBuddy「Buddy 加油站」每日签到 · 账号 7494 专用 workflow
+#  与 checkin.yml（主账号）同仓库并存，差异只有三点：
+#    1) 凭据 Secret 带 _7494 后缀（WB_REFRESH_TOKEN_7494 等），
+#       在下方 env 映射回脚本的标准变量名 —— 脚本零改动；
+#    2) concurrency 组名不同，两条 workflow 互不排队；
+#    3) cron 时间错开。
+#  通知通道（企微/PushPlus/Bark/Server酱）与主账号共用同一组 Secret。
+# ⚠️ 本 workflow 的凭据续期：客户端登录 7494 账号后，用
+#    scripts/copy_token_to_clipboard.py 复制令牌，网页粘贴更新
+#    WB_REFRESH_TOKEN_7494。**切勿**对 7494 账号运行
+#    sync_token_to_github.py（它会覆盖主账号的 WB_REFRESH_TOKEN）。
 # ─────────────────────────────────────────────────────────────
 
 on:
@@ -25,8 +29,9 @@ on:
         type: boolean
 
 # 同一时间只保留一个运行实例，避免并发重复领取
+# （组名与 checkin.yml 不同，两条 workflow 不会互相排队）
 concurrency:
-  group: workbuddy-checkin
+  group: workbuddy-checkin-7494
   cancel-in-progress: false
 
 permissions:
@@ -39,11 +44,13 @@ jobs:
     timeout-minutes: 10
 
     env:
-      # 凭据（脚本自动识别，长效令牌优先）
-      WB_REFRESH_TOKEN: ${{ secrets.WB_REFRESH_TOKEN }}
-      WB_ACCESS_TOKEN: ${{ secrets.WB_ACCESS_TOKEN }}
-      WB_DOMAIN: ${{ secrets.WB_DOMAIN }}
-      # 通知通道（可选，任一为空则跳过该通道）
+      # 凭据（账号 7494 专用 Secret，映射回脚本标准变量名，脚本零改动）
+      # 两者都配时脚本会优先使用 WB_REFRESH_TOKEN
+      WB_REFRESH_TOKEN: ${{ secrets.WB_REFRESH_TOKEN_7494 }}
+      WB_ACCESS_TOKEN: ${{ secrets.WB_ACCESS_TOKEN_7494 }}
+      # 域名：优先 7494 专属，未配则回落主账号的 WB_DOMAIN（都没配则脚本用默认值）
+      WB_DOMAIN: ${{ secrets.WB_DOMAIN_7494 || secrets.WB_DOMAIN }}
+      # 通知通道（可选，与主账号共用同一组 Secret，任一为空则跳过该通道）
       WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK }}
       PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
       BARK_URL: ${{ secrets.BARK_URL }}
@@ -59,11 +66,11 @@ jobs:
         id: guard
         run: |
           if [ -n "$WB_REFRESH_TOKEN" ]; then
-            echo "✓ 凭据已配置：WB_REFRESH_TOKEN（长效令牌，推荐；内容不外显）"
+            echo "✓ 凭据已配置：WB_REFRESH_TOKEN_7494（长效令牌，推荐；内容不外显）"
           elif [ -n "$WB_ACCESS_TOKEN" ]; then
-            echo "✓ 凭据已配置：WB_ACCESS_TOKEN（短效令牌直通；内容不外显）"
+            echo "✓ 凭据已配置：WB_ACCESS_TOKEN_7494（短效令牌直通；内容不外显）"
           else
-            echo "::error::未配置凭据。请在仓库 Settings → Secrets and variables → Actions 添加「WB_REFRESH_TOKEN」（客户端 5.6.2+ 必用，长效令牌）。"
+            echo "::error::未配置凭据。请在仓库 Settings → Secrets and variables → Actions 添加「WB_REFRESH_TOKEN_7494」（账号 7494 专用，客户端 5.6.2+ 必用，长效令牌）。"
             exit 1
           fi
           # 只输出存在性结论，不输出 token 长度 / 内容 / 片段（长度也是可用于指纹识别的信息）
