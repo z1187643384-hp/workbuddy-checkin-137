@@ -314,6 +314,9 @@ A：不会。凭据只存在于你自己的 Secrets，不进代码、不进日�
 **Q：签到时间能改吗？**
 A：编辑 `.github/workflows/checkin.yml` 里的 `cron` 表达式即可（UTC 时间）。
 
+**Q：支持多账号吗？**
+A：可以：在同一仓库复制一份 workflow（参考 `checkin_7494.yml`），凭据 Secret 换后缀（如 `WB_REFRESH_TOKEN_7494`），并在 workflow 里设 `WB_ACCOUNT_LABEL` 让推送与摘要标注账号；`concurrency` 组名也要错开，通知通道可共用。注意：副账号续期需用 `copy_token_to_clipboard.py` 复制后手动更新 Secret，**切勿**对副账号运行 `sync_token_to_github.py`（它会覆盖主账号的 Secret）。
+
 **Q：一直接收不到失败提醒？**
 A：检查是否配置了任一通知通道 Secret；否则失败只体现为 Actions 页面红灯与 GitHub 邮件。
 
@@ -323,6 +326,7 @@ A：检查是否配置了任一通知通道 Secret；否则失败只体现为 Ac
 
 | 版本 | 变更 |
 |---|---|
+| **`workbuddy_checkin.py` v2.3.0-ci** | 新增可选账号标签 `WB_ACCOUNT_LABEL`：多 workflow 多账号场景下，失败/成功推送与运行摘要都会标注账号（如「签到助手（7494）」），不设置则行为与旧版完全一致。配套：`summarize_result.py` 白名单放行 `detail.account`；仓库新增账号 7494 专用 workflow（`checkin_7494.yml`，Secret 带 `_7494` 后缀、独立并发组、共用通知通道）。 |
 | **`workbuddy_checkin.py` v2.2.0-ci** | 修复**输出层脱敏缺口**：接口响应改为**白名单压缩**后才写入 `detail`，避免完整响应经 `tee` 进入公开的 Actions **运行日志**（此前只有摘要层做了过滤）。新增 `WB_DUMP_RESP=1` 本机调试开关；口径与摘要层统一。 |
 | **`workbuddy_checkin.py` v2.1.0-ci** | ① 新增**长效令牌通道**（`WB_REFRESH_TOKEN`）：先向插件网关换取接口令牌再签到，适配套客户端 5.6.2+ 的加密登录态，且不依赖客户端常驻；② 识别登录态**加密信封**并给出明确报错与指引，不再静默鉴权失败；③ 余额字段补齐新版复数 `total_credits`（旧版只认单数，导致余额恒为空）；④ `mask_token()` 收紧为**只报长度**，适配公开仓库的日志可见性；⑤ `--diagnose` 改为报告凭据通道与刷新结果。<br>配套：`sync_token_to_github.py` / `copy_token_to_clipboard.py` 改为优先导出**长效令牌**；`security_audit.py` 新增登录态信封检测；workflow 更新 Secret 注入与 guard 步骤。 |
 | v2.0.0 | 首个 GitHub Actions 版本：接口直签、多渠道推送、日志脱敏、部署前自检。 |

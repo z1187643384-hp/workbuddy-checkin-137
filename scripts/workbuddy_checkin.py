@@ -112,7 +112,7 @@ STATUS_PATH = "/billing/meter/checkin-activity-status"
 CHECKIN_PATH = "/billing/meter/daily-checkin"
 HTTP_TIMEOUT = 10
 MAX_RETRY = 1
-VERSION = "2.2.0-ci"
+VERSION = "2.3.0-ci"
 
 # 长效令牌刷新端点（插件网关；与桌面客户端刷新所用同一官方接口）
 PLUGIN_API = "https://copilot.tencent.com"
@@ -163,6 +163,15 @@ def _env_credential():
     # 容错：允许传入带协议前缀的域名
     domain = domain.replace("https://", "").replace("http://", "").strip("/")
     return rt, at, domain
+
+
+def _account_label():
+    """可选账号标签（多账号 / 多 workflow 场景），来自环境变量 WB_ACCOUNT_LABEL。
+
+    仅用于在推送文案与运行摘要中区分是哪个账号，属非敏感信息；
+    截断到 20 字符，防止超长内容进入日志与推送。不设置则一切行为与旧版一致。
+    """
+    return (os.environ.get("WB_ACCOUNT_LABEL") or "").strip()[:20]
 
 
 def _check_expiry(auth):
@@ -565,20 +574,24 @@ def notify_failure(res):
     if cfg.get("enabled") is False:
         return
 
-    title = "⚠️ WorkBuddy签到助手 · 签到失败"
+    label = _account_label()
+    tag = "（%s）" % label if label else ""
+    acct_line = ("> **账号**：%s\n\n" % label) if label else ""
+    title = "⚠️ WorkBuddy签到助手%s · 签到失败" % tag
     now = time.strftime("%Y-%m-%d %H:%M:%S")  # 本机时区（北京时间）
     msg = res.get("msg", "未知原因")
     src = res.get("detail", {}).get("auth_source") or res.get("detail", {}).get("auth_file", "未知")
 
     content = (
-        "### ⚠️ WorkBuddy签到助手 · 签到失败\n\n"
+        "### ⚠️ WorkBuddy签到助手%s · 签到失败\n\n"
         "> **时间**：%s\n\n"
+        "%s"
         "> **原因**：%s\n\n"
         "> **凭据来源**：%s\n\n"
         "> **处理建议**：若为定时任务（GitHub Actions），请在本机重新运行 "
         "`python scripts/sync_token_to_github.py` 更新 Secret `WB_REFRESH_TOKEN`；"
         "若为本机运行，请确认 WorkBuddy 客户端已登录、电脑联网。\n"
-    ) % (now, msg, src)
+    ) % (tag, now, acct_line, msg, src)
 
     results = _dispatch_channels(cfg, title, content)
     # 仅记录推送动作结果（不含任何密钥 / token），便于排查
@@ -602,6 +615,9 @@ def notify_success(res):
     if not cfg.get("success_notify"):
         return
 
+    label = _account_label()
+    tag = "（%s）" % label if label else ""
+    acct_line = ("> **账号**：%s\n\n" % label) if label else ""
     now = time.strftime("%Y-%m-%d %H:%M:%S")  # 本机时区（北京时间）
     action = res.get("action")
     # 仅对明确的成功态推送（新签到 / 今日已签跳过）；其他态（失败 / 纯查询）不推
@@ -613,20 +629,22 @@ def notify_success(res):
     balance = res.get("balance")
 
     if action == "skip_already_signed":
-        title = "✅ WorkBuddy签到助手 · 今日已签"
+        title = "✅ WorkBuddy签到助手%s · 今日已签" % tag
         content = (
-            "### ✅ WorkBuddy签到助手 · 今日已签\n\n"
+            "### ✅ WorkBuddy签到助手%s · 今日已签\n\n"
             "> **时间**：%s\n\n"
+            "%s"
             "> **状态**：今日已签到，无需重复领取（幂等保护）\n\n"
             "> **说明**：系统定时任务 / 技能已正常执行，无需处理。\n"
-        ) % now
+        ) % (tag, now, acct_line)
     else:
-        title = "✅ WorkBuddy签到助手 · 签到成功"
+        title = "✅ WorkBuddy签到助手%s · 签到成功" % tag
         lines = (
-            "### ✅ WorkBuddy签到助手 · 签到成功\n\n"
+            "### ✅ WorkBuddy签到助手%s · 签到成功\n\n"
             "> **时间**：%s\n\n"
+            "%s"
             "> **状态**：%s\n"
-        ) % (now, msg)
+        ) % (tag, now, acct_line, msg)
         if points:
             lines += "> **积分**：+%s\n\n" % points
         if streak:
@@ -703,6 +721,11 @@ def _win_toast(title, body):
 def run(check_only):
     result = {"status": "unknown", "action": None, "points": None,
               "balance": None, "msg": "", "detail": {}}
+
+    # 可选账号标签（多 workflow 场景）：写进 detail，供摘要层展示与推送引用
+    label = _account_label()
+    if label:
+        result["detail"]["account"] = label
 
     # 1) 解析凭据（长效令牌 > 短效令牌 > 本机登录态文件）
     token, domain, err = resolve_credential(result)
@@ -982,7 +1005,7 @@ USAGE = (
     "  WB_REFRESH_TOKEN   长效令牌（推荐；5.6.2+ 客户端必用，云端换取接口令牌）\n"
     "  WB_ACCESS_TOKEN    短效接口令牌直通（兼容 5.5.x 及更早 / 未加密登录态）\n"
     "  本机登录态文件     workbuddy-desktop.info（仅明文登录态可用）\n"
-    "其他环境变量：WB_DOMAIN / WB_EXPIRES_AT\n"
+    "其他环境变量：WB_DOMAIN / WB_EXPIRES_AT / WB_ACCOUNT_LABEL（多账号场景的推送与摘要标注，可选）\n"
     "退出码：成功 0 / 失败 1（便于自动化判断是否推送告警）\n"
     "签到成功后会在结果中展示当前积分余额（若接口返回 balance / total_credits 等字段）。\n"
     "微信推送开关见 ~/.workbuddy/scripts/notify_config.json 的 \"success_notify\" 字段。\n"

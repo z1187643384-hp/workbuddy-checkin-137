@@ -57,6 +57,8 @@ jobs:
       SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
       # 签到成功是否也推送播报（可选，默认仅失败提醒）
       SUCCESS_NOTIFY: ${{ secrets.SUCCESS_NOTIFY }}
+      # 账号标签（非敏感）：推送与摘要中标注是哪个账号，与主 workflow 区分
+      WB_ACCOUNT_LABEL: '7494'
 
     steps:
       - name: 检出仓库
